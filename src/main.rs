@@ -7,6 +7,6 @@ fn main() {
 	env_logger::init();
     info!("Starting flowty!");
 
-    let mut scheduler: scheduler::Scheduler = scheduler::Scheduler{workflows: Vec::new()};
-    scheduler.scheduler();
+    let mut scheduler: scheduler::Scheduler = scheduler::Scheduler::new();
+    scheduler.run();
 }

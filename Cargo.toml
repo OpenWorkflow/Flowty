@@ -18,3 +18,9 @@ bytes = "~0.5"
 
 [build-dependencies]
 prost-build = { version = "~0.6" }
+
+[profile.dev]
+opt-level = 0
+
+[profile.release]
+opt-level = 3

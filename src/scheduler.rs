@@ -1,12 +1,14 @@
 extern crate log;
 
-use std::{thread, time};
 use log::{info, trace, warn};
+
+use std::{thread, time};
+use std::sync::mpsc;
 
 mod workflow;
 
 pub struct Scheduler {
-	pub workflows: Vec<workflow::Workflow>,
+	workflows: Vec<workflow::Workflow>,
 }
 
 fn calc_loop_pause(loop_start: time::Instant) -> u64 {
@@ -29,13 +31,19 @@ fn calc_loop_pause(loop_start: time::Instant) -> u64 {
 }
 
 impl Scheduler {
-	pub fn scheduler(&mut self) {
-		info!("Starting main scheduler loop");
+	pub fn new() -> Scheduler {
+		Scheduler{workflows: Vec::new()}
+	}
+
+	pub fn run(&mut self) {
+		let (tx, rx) = mpsc::channel();
+
+		info!("Starting scheduler loop");
 		loop {
 			let now = time::Instant::now();
 			
 			self.harvest_workflows();
-			self.process_workflows();
+			self.process_workflows(move tx);
 
 			thread::sleep(time::Duration::from_secs(calc_loop_pause(now)));
 			break;
@@ -48,7 +56,7 @@ impl Scheduler {
 		self.workflows.push(w);
 	}
 
-	fn process_workflows(&mut self) {
+	fn process_workflows(&mut self, tx: mpsc::Sender) {
 		for workflow in self.workflows.iter_mut() {
 			info!("{}", workflow.workflow.workflow_id);
 		}
