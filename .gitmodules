@@ -1,0 +1,3 @@
+[submodule "OpenWorkflow"]
+	path = OpenWorkflow
+	url = git@github.com:OpenWorkflow/OpenWorkflow.git
