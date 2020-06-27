@@ -21,14 +21,11 @@ fn calc_loop_pause(loop_start: time::Instant) -> u64 {
 
 pub fn scheduler() {
 	info!("Starting main scheduler loop");
-	let f = File::open("msg/serializedFile").unwrap();
-
 	loop {
 		let now = time::Instant::now();
-
-		workflow::Workflow::from_file(f);
-		//let w = workflow::Workflow::from_file(f);
-		//info!("{}", w.workflow_id);
+		
+		let w = workflow::Workflow::from_file("msg/serializedFile");
+		info!("{}", w.workflow_id);
 
 		thread::sleep(time::Duration::from_secs(calc_loop_pause(now)));
 		break;

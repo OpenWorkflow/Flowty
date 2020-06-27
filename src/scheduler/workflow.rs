@@ -1,8 +1,5 @@
-use bytes::{Bytes, Buf};
-use std::io::Read;
-use std::io::BufReader;
+use bytes::Buf;
 use std::io::Cursor;
-use std::fs::File;
 
 //use chrono::prelude::*;	
 //use cron::Schedule;
@@ -18,11 +15,11 @@ pub struct Workflow {
 }
 
 impl Workflow {
-	pub fn from_file(mut f: File) -> openworkflow::Workflow {
-		let reader = BufReader::new(f);
-		let buf = Cursor::new(reader.buffer());
+	pub fn from_file<P: AsRef<std::path::Path>>(path: P) -> openworkflow::Workflow {
+		let contents = std::fs::read(path).unwrap();
+		let cursor = Cursor::new(contents);
 
-		let openworkflow: openworkflow::Workflow = Message::decode(buf).unwrap();
+		let openworkflow: openworkflow::Workflow = Message::decode(cursor).unwrap();
 
 		openworkflow
 	}
