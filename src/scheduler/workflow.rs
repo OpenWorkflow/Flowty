@@ -15,21 +15,19 @@ pub struct Workflow {
 }
 
 impl Workflow {
-	pub fn from_file<P: AsRef<std::path::Path>>(path: P) -> openworkflow::Workflow {
+	pub fn from_file<P: AsRef<std::path::Path>>(path: P) -> Result<Workflow, DecodeError> {
 		let contents = std::fs::read(path).unwrap();
 		let cursor = Cursor::new(contents);
 
-		let openworkflow: openworkflow::Workflow = Message::decode(cursor).unwrap();
-
-		openworkflow
+		Workflow::new(cursor)
 	}
 
-	pub fn new<B>(buf: B) -> Result<openworkflow::Workflow, DecodeError> 
+	pub fn new<B>(buf: B) -> Result<Workflow, DecodeError> 
 	where
 		B: Buf,
 	{
 		let openworkflow: openworkflow::Workflow = Message::decode(buf).unwrap();
 
-		Ok(openworkflow)
+		Ok(Workflow {workflow: openworkflow })
 	}
 }
