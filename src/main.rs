@@ -5,7 +5,7 @@ mod scheduler;
 
 fn main() {
 	env_logger::init();
-    info!("Starting flowty_scheduler!");
+    info!("Starting flowty!");
 
     scheduler::scheduler();
 }

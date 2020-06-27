@@ -1,2 +1,2 @@
-# flowty_scheduler
-flowty_scheduler aims to be a (PoC) implementation of OpenWorkflow.
+# flowty
+flowt aims to be a (PoC) implementation of OpenWorkflow.

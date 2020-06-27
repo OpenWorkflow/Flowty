@@ -1,5 +1,5 @@
 [package]
-name = "flowty_scheduler"
+name = "flowty"
 version = "0.1.0"
 authors = ["milchdealer <franzj94@googlemail.com>"]
 edition = "2018"
