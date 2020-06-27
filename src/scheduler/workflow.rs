@@ -22,7 +22,7 @@ impl Workflow {
 		let reader = BufReader::new(f);
 		let buf = Cursor::new(reader.buffer());
 
-		let openworkflow: openworkflow::Workflow = Message::decode(data).unwrap();
+		let openworkflow: openworkflow::Workflow = Message::decode(buf).unwrap();
 
 		openworkflow
 	}
