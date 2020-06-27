@@ -19,12 +19,8 @@ pub struct Workflow {
 
 impl Workflow {
 	pub fn from_file(mut f: File) -> openworkflow::Workflow {
-		//let reader = BufReader::new(f);
-		//let buf = Cursor::new(reader.buffer());
-		let mut data = Vec::new();
-		f.read_to_end(&mut data).unwrap();
-		
-		info!("{:?}", data);
+		let reader = BufReader::new(f);
+		let buf = Cursor::new(reader.buffer());
 
 		let openworkflow: openworkflow::Workflow = Message::decode(data).unwrap();
 
