@@ -2,17 +2,24 @@ extern crate log;
 
 use log::{info, trace, warn};
 
-use std::{thread, time};
-use std::sync::mpsc;
+use std::string::String;
+use std::collections::HashMap;
+use std::time::{Duration, Instant};
+use std::thread;
+//use std::sync::mpsc;
+
+//use postgres::Client;
 
 mod workflow;
 
+const LOOP_INTERVAL_SEC : u64 = 2;
+
 pub struct Scheduler {
-	workflows: Vec<workflow::Workflow>,
+	workflow_bundle: HashMap<String, workflow::Workflow>,
+	//sql_client: Client,
 }
 
-fn calc_loop_pause(loop_start: time::Instant) -> u64 {
-	const LOOP_INTERVAL_SEC : u64 = 30;
+fn calc_loop_pause(loop_start: Instant) -> u64 {
 	let elapsed_sec : u64 = loop_start.elapsed().as_secs();
 
 	trace!(
@@ -32,34 +39,61 @@ fn calc_loop_pause(loop_start: time::Instant) -> u64 {
 
 impl Scheduler {
 	pub fn new() -> Scheduler {
-		Scheduler{workflows: Vec::new()}
+		Scheduler{workflow_bundle: HashMap::new()}
 	}
 
 	pub fn run(&mut self) {
-		let (tx, rx) = mpsc::channel();
-
 		info!("Starting scheduler loop");
 		loop {
-			let now = time::Instant::now();
+			let now = Instant::now();
 			
 			self.harvest_workflows();
-			self.process_workflows(move tx);
+			self.process_workflows();
 
-			thread::sleep(time::Duration::from_secs(calc_loop_pause(now)));
+			thread::sleep(Duration::from_secs(calc_loop_pause(now)));
 			break;
 		}
 	}
 
 	fn harvest_workflows(&mut self) {
-		let w = workflow::Workflow::from_file("msg/serializedFile").unwrap();
+		// Replace this with reading from DB and looping over results:
+		let openworkflow = workflow::openworkflow_from_file("msg/workflow").unwrap();
+		let workflow_id = openworkflow.workflow_id.clone();
 
-		self.workflows.push(w);
+		match self.workflow_bundle.get_mut(&workflow_id) {
+			Some(w) => w.add_workflow(openworkflow),
+			_ => {
+				self.workflow_bundle.insert(workflow_id, workflow::Workflow::from_openworkflow(openworkflow));
+			},
+		}
 	}
 
-	fn process_workflows(&mut self, tx: mpsc::Sender) {
-		for workflow in self.workflows.iter_mut() {
-			info!("{}", workflow.workflow.workflow_id);
+	fn process_workflows(&mut self) {
+		//let (tx, rx) = mpsc::channel();
+		for (workflow_id, workflow) in self.workflow_bundle.iter_mut() {
+			info!("{}", workflow_id);
 		}
+		/*
+			let tx = tx.clone();
+
+			thread::spawn(move || {
+				let vals = vec![
+					String::from("hi"),
+					String::from("from"),
+					String::from("the"),
+					String::from("thread"),
+				];
+
+				for val in vals {
+					tx.send(val).unwrap();
+					thread::sleep(Duration::from_secs(1));
+				}
+			});
+		}
+		for received in rx {
+			println!("Got: {}", received);
+		}
+		*/
 	}
 }
 
