@@ -18,6 +18,9 @@ pub struct WorkflowVersion {
 	// Expose the underlying OpenWorkflow message
 	pub workflow: openworkflow::Workflow,
 	version: u32,
+	// parse_date is useless right now, but I plan to use it for conditional version
+	// i.e. version X is valid for a certain time range or version Y is valid until the next parse_date.
+	// additionally it will be written to db, so just for completness & debug it's here as well
 	parse_date: DateTime<Utc>,
 }
 
@@ -31,24 +34,12 @@ impl WorkflowVersion {
 	}
 }
 
-enum RunState {
-	NOTHING,
-	QUEUED,
-	RUNNING(std::string::String),  // task_id
-	SUCCESS,
-	FAILED,
-}
-
 pub struct Workflow {
 	workflows : Vec<WorkflowVersion>,
 	last_tick: Option<DateTime<Utc>>,
 }
 
 impl Workflow {
-	pub fn new() -> Workflow {
-		Workflow{workflows: Vec::new(), last_tick: None}
-	}
-
 	pub fn from_openworkflow(workflow: openworkflow::Workflow) -> Workflow {
 		Workflow{workflows: vec![WorkflowVersion::new(workflow, 0)], last_tick: None}
 	}
@@ -60,9 +51,9 @@ impl Workflow {
 		}
 	}
 	pub fn get_latest_workflow(&self) -> Option<&WorkflowVersion> {
-		self.get_workflow(self.get_latest_version())
+		self.get_workflow_by_version(self.get_latest_version())
 	}
-	pub fn get_workflow(&self, version: u32) -> Option<&WorkflowVersion> {
+	pub fn get_workflow_by_version(&self, version: u32) -> Option<&WorkflowVersion> {
 		self.workflows.iter().filter(|w| w.version == version).last()
 	}
 
@@ -83,8 +74,16 @@ impl Workflow {
 }
 
 /*
+enum RunState {
+	NOTHING,
+	QUEUED,
+	RUNNING(std::string::String),  // task_id
+	SUCCESS,
+	FAILED,
+}
+
 pub struct WorkflowInstance {
-	pub workflow : Workflow,
+	pub workflow : &Workflow,
 	version : u32,
 	run_state: RunState,
 	run_date: DateTime<Utc>,
