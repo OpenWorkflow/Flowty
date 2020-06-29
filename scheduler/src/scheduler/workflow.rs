@@ -50,8 +50,9 @@ impl Workflow {
 			None => 0,
 		}
 	}
-	pub fn get_latest_workflow(&self) -> Option<&WorkflowVersion> {
-		self.get_workflow_by_version(self.get_latest_version())
+	pub fn get_latest_workflow(&self) -> (u32, Option<&WorkflowVersion>) {
+		let version = self.get_latest_version();
+		(version, self.get_workflow_by_version(version))
 	}
 	pub fn get_workflow_by_version(&self, version: u32) -> Option<&WorkflowVersion> {
 		self.workflows.iter().filter(|w| w.version == version).last()
@@ -59,14 +60,14 @@ impl Workflow {
 
 	pub fn add_workflow(&mut self, openworkflow: openworkflow::Workflow) {
 		match self.get_latest_workflow() {
-			Some(w) => {
+			(v, Some(w)) => {
 				if w.workflow != openworkflow {
-					self.workflows.append(&mut vec![WorkflowVersion::new(openworkflow, w.version + 1)]);
+					self.workflows.append(&mut vec![WorkflowVersion::new(openworkflow, v + 1)]);
 				} else {
 					trace!("Workflow '{}' already present", w.workflow.workflow_id);
 				}
 			},
-			_ => {
+			(_, _) => {
 				self.workflows.append(&mut vec![WorkflowVersion::new(openworkflow, 0)]);
 			}
 		}

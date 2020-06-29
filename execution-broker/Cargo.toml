@@ -1,0 +1,19 @@
+[package]
+name = "execution-broker"
+version = "0.1.0"
+authors = ["milchdealer <franzj94@googlemail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+log = "~0.4"
+env_logger = "~0.7"
+uuid = { version = "~0.8", features= ["v4"] }
+tonic = "~0.2"
+prost = "~0.6"
+prost-types = "~0.6"
+tokio = { version = "~0.2", features = ["rt-threaded", "time", "stream", "fs", "macros", "uds"] }
+
+[build-dependencies]
+tonic-build = { version = "~0.2", features = ["prost"] }
