@@ -2,6 +2,7 @@
 members = [
     "scheduler",
     "execution-broker",
+    "local-executor",
 ]
 
 [profile.dev]

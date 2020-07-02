@@ -6,8 +6,6 @@ use std::string::String;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use std::thread;
-//use std::sync::mpsc;
-
 //use postgres::Client;
 
 mod workflow;
@@ -69,31 +67,9 @@ impl Scheduler {
 	}
 
 	fn process_workflows(&mut self) {
-		//let (tx, rx) = mpsc::channel();
 		for (workflow_id, workflow) in self.workflow_bundle.iter_mut() {
 			info!("{}", workflow_id);
 		}
-		/*
-			let tx = tx.clone();
-
-			thread::spawn(move || {
-				let vals = vec![
-					String::from("hi"),
-					String::from("from"),
-					String::from("the"),
-					String::from("thread"),
-				];
-
-				for val in vals {
-					tx.send(val).unwrap();
-					thread::sleep(Duration::from_secs(1));
-				}
-			});
-		}
-		for received in rx {
-			println!("Got: {}", received);
-		}
-		*/
 	}
 }
 

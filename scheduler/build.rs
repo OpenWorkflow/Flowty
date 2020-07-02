@@ -1,4 +1,3 @@
 fn main() {
-	prost_build::compile_protos(&["../OpenWorkflow/proto/workflow.proto"],
-								&["../OpenWorkflow/proto/"]).unwrap();
+	tonic_build::compile_protos("../OpenWorkflow/proto/openworkflow.proto").unwrap();
 }

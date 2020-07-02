@@ -9,9 +9,6 @@ use tonic::{transport::Server, Request, Response, Status};
 
 use openworkflow::execution_broker_server::{ExecutionBroker, ExecutionBrokerServer};
 use openworkflow::{
-	ExecutorKind,
-	OperatingSystem,
-	LocalSpecification,
 	RegistrationRequest,
 	RegistrationReply,
 	Heartbeat,
@@ -20,7 +17,7 @@ use openworkflow::{
 };
 
 pub mod openworkflow {
-	tonic::include_proto!("openworkflow.execution_broker");
+	tonic::include_proto!("openworkflow");
 }
 
 #[derive(Clone)]
@@ -66,14 +63,6 @@ impl FlowtyExecutionBroker {
 		let executors = Arc::clone(&self.executors);
 		let executors = executors.lock().unwrap();
 		executors.iter().filter(|e| e.executor.uri == uri).last().cloned()
-
-		// for executor in &executors[..] {
-		// 	if executor.executor.uri == uri {
-		// 		let executor = *executor;
-		// 		return Some(executor.cloned());
-		// 	}
-		// };
-		// None
 	}
 
 	pub fn find_by_uuid(&self, uuid: std::string::String) -> Option<Executor> {
@@ -86,15 +75,23 @@ impl FlowtyExecutionBroker {
 		let executors = Arc::clone(&self.executors);
 		let executors = executors.lock().unwrap();
 
-		// todo: honor block_list, local_spec, and return a full list
-		executors.iter().filter(|e| e.executor.kind == request.kind).last().cloned()
+		let search_def = request.executor_definition.as_ref().unwrap();
+		for e in executors.iter() {
+			// todo: honor block_list, local_spec, and return a full list
+			let def = e.executor.executor_definition.as_ref().unwrap();
+			if def.kind == search_def.kind {
+				return Some((*e).clone());
+			}
+		}
+		None
+
 	}
 }
 
 #[tonic::async_trait]
 impl ExecutionBroker for FlowtyExecutionBroker {
 	async fn register_executor(&self, request: Request<RegistrationRequest>) -> Result<Response<RegistrationReply>, Status> {
-		trace!("Got a request from {:?}", request.remote_addr());
+		info!("Got a request from {:?}", request.remote_addr());
 		let request = request.into_inner();
 
 		let existing_executor = self.find_by_uri(request.uri.clone());
@@ -121,32 +118,21 @@ impl ExecutionBroker for FlowtyExecutionBroker {
 	}
 
 	async fn heart_beat(&self, request: Request<Heartbeat>) -> Result<Response<Heartbeat>, Status> {
-		trace!("Got a heartbeat from {:?}", request);
+		info!("Got a heartbeat from {:?}", request);
 		let request = request.into_inner();
 
 		let executor = self.find_by_uuid(request.unique_id.clone());
-		if match executor {
-					Some(e) => {
-						e.heartbeat();
-						true
-					},
-					_ => false
-			} {
-			return Ok(Response::new(request));
-		}
-
-		let executor = self.find_by_uri(request.uri.clone());
 		match executor {
 			Some(e) => {
 				e.heartbeat();
 				Ok(Response::new(request))
 			},
-			_ => Ok(Response::new(Heartbeat{uri: "".to_string(), unique_id: "".to_string()}))
+			_ => Ok(Response::new(Heartbeat{unique_id: "".to_string()}))
 		}
 	}
 
 	async fn find_executor(&self, request: Request<SearchRequest>) -> Result<Response<SearchReply>, Status> {
-		trace!("Got a search request from {:?}", request.remote_addr());
+		info!("Got a search request from {:?}", request.remote_addr());
 		let request = request.into_inner();
 
 		let result = self.find_by_request(request);
@@ -159,15 +145,17 @@ impl ExecutionBroker for FlowtyExecutionBroker {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let addr = "[::1]:50051".parse().unwrap();
-    let execution_broker = FlowtyExecutionBroker::default();
+	env_logger::init();
 
-    println!("ExecutionBrokerServer listening on {}", addr);
+	let addr = "[::1]:50051".parse().unwrap();
+	let execution_broker = FlowtyExecutionBroker::default();
 
-    Server::builder()
-        .add_service(ExecutionBrokerServer::new(execution_broker))
-        .serve(addr)
-        .await?;
+	info!("ExecutionBrokerServer listening on {}", addr);
 
-    Ok(())
+	Server::builder()
+		.add_service(ExecutionBrokerServer::new(execution_broker))
+		.serve(addr)
+		.await?;
+
+	Ok(())
 }

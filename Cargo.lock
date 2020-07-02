@@ -645,6 +645,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8dd5a6d5999d9907cda8ed67bbd137d3af8085216c2ac62de5be860bd41f304a"
 
 [[package]]
+name = "local-executor"
+version = "0.1.0"
+dependencies = [
+ "async-stream",
+ "env_logger",
+ "log",
+ "prost",
+ "prost-types",
+ "tokio",
+ "tonic",
+ "tonic-build",
+ "uuid",
+]
+
+[[package]]
 name = "lock_api"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1185,9 +1200,11 @@ dependencies = [
  "log",
  "postgres",
  "prost",
- "prost-build",
  "prost-types",
  "time",
+ "tokio",
+ "tonic",
+ "tonic-build",
 ]
 
 [[package]]

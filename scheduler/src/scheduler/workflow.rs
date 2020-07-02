@@ -1,11 +1,11 @@
 use std::io::Cursor;
 
-//use chrono::{DateTime, Utc};
 use chrono::prelude::*;
+
 use prost::{Message, DecodeError};
 
 pub mod openworkflow {
-    include!(concat!(env!("OUT_DIR"), "/openworkflow.workflow.rs"));
+	tonic::include_proto!("openworkflow");
 }
 
 pub fn openworkflow_from_file<P: AsRef<std::path::Path>>(path: P) -> Result<openworkflow::Workflow, DecodeError> {
@@ -14,6 +14,7 @@ pub fn openworkflow_from_file<P: AsRef<std::path::Path>>(path: P) -> Result<open
 	Message::decode(c)
 }
 
+#[derive(Clone)]
 pub struct WorkflowVersion {
 	// Expose the underlying OpenWorkflow message
 	pub workflow: openworkflow::Workflow,
@@ -50,24 +51,26 @@ impl Workflow {
 			None => 0,
 		}
 	}
-	pub fn get_latest_workflow(&self) -> (u32, Option<&WorkflowVersion>) {
+	pub fn get_latest_workflow(&self) -> (u32, Option<WorkflowVersion>) {
 		let version = self.get_latest_version();
 		(version, self.get_workflow_by_version(version))
 	}
-	pub fn get_workflow_by_version(&self, version: u32) -> Option<&WorkflowVersion> {
-		self.workflows.iter().filter(|w| w.version == version).last()
+	pub fn get_workflow_by_version(&self, version: u32) -> Option<WorkflowVersion> {
+		self.workflows.iter().filter(|w| w.version == version).last().cloned()
 	}
 
 	pub fn add_workflow(&mut self, openworkflow: openworkflow::Workflow) {
 		match self.get_latest_workflow() {
 			(v, Some(w)) => {
 				if w.workflow != openworkflow {
+					trace!("New version of workflow '{}' received", w.workflow.workflow_id);
 					self.workflows.append(&mut vec![WorkflowVersion::new(openworkflow, v + 1)]);
 				} else {
 					trace!("Workflow '{}' already present", w.workflow.workflow_id);
 				}
 			},
 			(_, _) => {
+				info!("New workflow '{}' received!", openworkflow.workflow_id);
 				self.workflows.append(&mut vec![WorkflowVersion::new(openworkflow, 0)]);
 			}
 		}
