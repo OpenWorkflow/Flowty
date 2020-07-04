@@ -1,15 +1,17 @@
 #[macro_use] extern crate log;
 extern crate env_logger;
 
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::io::{BufReader, BufRead};
 
-use tonic::{transport::Server, Request, Response, Status};
+use tonic::{transport::Server, Request, Response, Status, Code};
 use tokio::sync::mpsc;
 
 use openworkflow::executor_server::{Executor, ExecutorServer};
 use openworkflow::{
 	Task,
-	ExecutionOutput
+	ExecutionOutput,
+	ExecutionStatus
 };
 
 pub mod openworkflow {
@@ -24,41 +26,71 @@ impl Executor for LocalExecutor {
 
 	async fn execute_task(&self, request: Request<Task>) -> Result<Response<Self::ExecuteTaskStream>, Status> {
 		trace!("ExecuteTask = {:?}", request);
-		info!("Trying to execute task '{}'", request.into_inner().task_id);
+		let task = request.into_inner();
+		info!("Trying to execute task '{}'", task.task_id);
 
-		let (mut tx, rx) = mpsc::channel(4);
+		match task.execution.unwrap().execution.unwrap().exec {
+			Some(openworkflow::execution_definition::Exec::Local(local_execution)) => {
+				let (mut tx, rx) = mpsc::channel(4);
+				tokio::spawn(async move {
+					tx.send(Ok(ExecutionOutput{
+						status: 0,	// INITIALIZING
+						message: String::from("Local-Executor: Initializing task"),
+					}));
+					let mut cmd = Command::new(local_execution.command)
+						.stdout(Stdio::piped())
+						.stderr(Stdio::piped())
+						.spawn()
+						.expect("failed to execute process");
+					{
+						let stdout = cmd.stdout.as_mut().unwrap();
+						let stdout_reader = BufReader::new(stdout);
+						let stderr = cmd.stderr.as_mut().unwrap();
+						let stderr_reader = BufReader::new(stderr);
 
-		tokio::spawn(async move {
-			Command::new("sh")
-					.arg("-c")
-					.arg("echo hello")
-					.stdout(Stdio::piped())
-					.stderr(Stdio::piped())
-					.spawn()
-					.expect("failed to execute process");
+						for line in stdout_reader.lines() {
+							tx.send(Ok(ExecutionOutput{
+								status: ExecutionStatus::Running as i32,
+								message: line.unwrap(),
+							}));
+						}
+						for line in stderr_reader.lines() {
+							tx.send(Ok(ExecutionOutput{
+								status: ExecutionStatus::Running as i32,
+								message: line.unwrap(),
+							}));
+						}
 
-			{
-				let stdout = cmd.stdout.as_mut().unwrap();
-				let stdout_reader = BufReader::new(stdout);
-				let stdout_lines = stdout_reader.lines();
-
-				for line in stdout_lines {
-					tx.send(Ok(line))
-				}
-
-				match status = cmd.wait() {
-					Some(s) if s.success() => {
-
-					},
-					Some(s) => {
-						
+						match cmd.wait() {
+							Ok(s) if s.success() => {
+								tx.send(Ok(ExecutionOutput{
+									status: ExecutionStatus::Success as i32,
+									message: s.code().unwrap().to_string(),
+								}));
+							},
+							Ok(s) => {
+								tx.send(Ok(ExecutionOutput{
+									status: ExecutionStatus::Failed as i32,
+									message: s.code().unwrap().to_string(),
+								}));
+							},
+							_ => {
+								tx.send(Err(ExecutionOutput{
+									status: ExecutionStatus::Failed as i32,
+									message: String::from("Failed to execute task"),
+								}));
+							}
+						}
 					}
-					_ => 
-				}
-			}
-		});
+				});
 
-		Ok(Response::new(rx))
+				Ok(Response::new(rx))
+			},
+			_ => {
+				error!("Task is not supposed to run with LocalExecutor");
+				Err(Status::new(Code::FailedPrecondition, "Task is not supposed to run with LocalExecutor"))
+			}
+		}
 	}
 }
 
