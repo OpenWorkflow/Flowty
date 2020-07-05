@@ -38,7 +38,7 @@ impl Executor for LocalExecutor {
 					tx.send(Ok(ExecutionOutput{
 						status: ExecutionStatus::Initializing as i32,
 						message: String::from("Local-Executor: Initializing task"),
-					})).await;
+					})).await.unwrap();
 					let mut cmd = Command::new(local_execution.command)
 						.stdout(Stdio::piped())
 						.stderr(Stdio::piped())
@@ -55,13 +55,13 @@ impl Executor for LocalExecutor {
 							tx.send(Ok(ExecutionOutput{
 								status: ExecutionStatus::Running as i32,
 								message: line.unwrap(),
-							}));
+							})).await.unwrap();
 						}
 						for line in stderr_reader.lines() {
 							tx.send(Ok(ExecutionOutput{
 								status: ExecutionStatus::Running as i32,
 								message: line.unwrap(),
-							}));
+							})).await.unwrap();
 						}
 
 						match cmd.wait() {
@@ -69,19 +69,16 @@ impl Executor for LocalExecutor {
 								tx.send(Ok(ExecutionOutput{
 									status: ExecutionStatus::Success as i32,
 									message: s.code().unwrap().to_string(),
-								})).await;
+								})).await.unwrap();
 							},
 							Ok(s) => {
 								tx.send(Ok(ExecutionOutput{
 									status: ExecutionStatus::Failed as i32,
 									message: s.code().unwrap().to_string(),
-								})).await;
+								})).await.unwrap();
 							},
 							_ => {
-								tx.send(Err(ExecutionOutput{
-									status: ExecutionStatus::Failed as i32,
-									message: String::from("Failed to execute task"),
-								})).await;
+								tx.send(Err(Status::new(Code::Aborted, "Failed to execute task"))).await.unwrap();
 							}
 						}
 					}
@@ -97,7 +94,7 @@ impl Executor for LocalExecutor {
 	}
 }
 
-const URI:String = String::from("[::1]:50052");
+const URI: &str = "[::1]:50052";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
