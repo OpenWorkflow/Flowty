@@ -21,6 +21,7 @@ pub mod openworkflow {
 #[derive(Default)]
 pub struct LocalExecutor {}
 
+#[tonic::async_trait]
 impl Executor for LocalExecutor {
 	type ExecuteTaskStream = mpsc::Receiver<Result<ExecutionOutput, Status>>;
 
@@ -31,12 +32,13 @@ impl Executor for LocalExecutor {
 
 		match task.execution.unwrap().execution.unwrap().exec {
 			Some(openworkflow::execution_definition::Exec::Local(local_execution)) => {
-				let (mut tx, rx) = mpsc::channel(4);
+				let (mut tx, rx) = mpsc::channel(1);
+
 				tokio::spawn(async move {
 					tx.send(Ok(ExecutionOutput{
-						status: 0,	// INITIALIZING
+						status: ExecutionStatus::Initializing as i32,
 						message: String::from("Local-Executor: Initializing task"),
-					}));
+					})).await;
 					let mut cmd = Command::new(local_execution.command)
 						.stdout(Stdio::piped())
 						.stderr(Stdio::piped())
@@ -48,6 +50,7 @@ impl Executor for LocalExecutor {
 						let stderr = cmd.stderr.as_mut().unwrap();
 						let stderr_reader = BufReader::new(stderr);
 
+						// Todo: Pack this into threads:
 						for line in stdout_reader.lines() {
 							tx.send(Ok(ExecutionOutput{
 								status: ExecutionStatus::Running as i32,
@@ -66,19 +69,19 @@ impl Executor for LocalExecutor {
 								tx.send(Ok(ExecutionOutput{
 									status: ExecutionStatus::Success as i32,
 									message: s.code().unwrap().to_string(),
-								}));
+								})).await;
 							},
 							Ok(s) => {
 								tx.send(Ok(ExecutionOutput{
 									status: ExecutionStatus::Failed as i32,
 									message: s.code().unwrap().to_string(),
-								}));
+								})).await;
 							},
 							_ => {
 								tx.send(Err(ExecutionOutput{
 									status: ExecutionStatus::Failed as i32,
 									message: String::from("Failed to execute task"),
-								}));
+								})).await;
 							}
 						}
 					}
