@@ -9,7 +9,6 @@ edition = "2018"
 [dependencies]
 log = "~0.4"
 env_logger = "~0.7"
-uuid = { version = "~0.8", features= ["v4"] }
 async-stream = "~0.2"
 tonic = { version = "~0.2", features = ["codegen", "prost", "async-trait", "tls"] }
 prost = "~0.6"

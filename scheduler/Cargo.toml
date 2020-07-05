@@ -15,7 +15,7 @@ cron = "~0.6"
 prost = "~0.6"
 prost-types = "~0.6"
 tokio = { version = "~0.2", features = ["rt-threaded", "time", "stream", "fs", "macros", "uds"] }
-tonic = "~0.2"
+tonic = { version = "~0.2", features = ["codegen", "prost", "async-trait", "tls"] }
 bytes = "~0.5"
 config = "~0.10"
 postgres = { version = "~0.17", features = ["with-chrono-0_4"] }

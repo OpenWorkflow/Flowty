@@ -39,6 +39,7 @@ impl Executor for LocalExecutor {
 						status: ExecutionStatus::Initializing as i32,
 						message: String::from("Local-Executor: Initializing task"),
 					})).await.unwrap();
+					info!("Executing command: {}", local_execution.command.clone());
 					let mut cmd = Command::new(local_execution.command)
 						.stdout(Stdio::piped())
 						.stderr(Stdio::piped())
@@ -50,7 +51,7 @@ impl Executor for LocalExecutor {
 						let stderr = cmd.stderr.as_mut().unwrap();
 						let stderr_reader = BufReader::new(stderr);
 
-						// Todo: Pack this into threads:
+						// Todo: Pack this into threads
 						for line in stdout_reader.lines() {
 							tx.send(Ok(ExecutionOutput{
 								status: ExecutionStatus::Running as i32,

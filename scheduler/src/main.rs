@@ -8,7 +8,8 @@ mod scheduler;
 
 use scheduler::Scheduler;
 
-fn main() {
+#[tokio::main]
+async fn main() {
 	env_logger::init();
 	info!("Starting flowty!");
 

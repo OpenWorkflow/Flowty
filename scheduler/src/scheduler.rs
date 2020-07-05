@@ -6,7 +6,15 @@ use std::string::String;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use std::thread;
-//use postgres::Client;
+
+use tonic::Request;
+
+use workflow::openworkflow::executor_client::ExecutorClient;
+// use workflow::openworkflow::{
+// 	Task,
+// 	ExecutionOutput,
+// 	ExecutionStatus
+// };
 
 mod workflow;
 
@@ -65,10 +73,31 @@ impl Scheduler {
 			},
 		}
 	}
+// let mut stream = client
+//         .list_features(Request::new(rectangle))
+//         .await?
+//         .into_inner();
 
+//     while let Some(feature) = stream.message().await? {
+//         println!("NOTE = {:?}", feature);
+//     }
 	fn process_workflows(&mut self) {
 		for (workflow_id, workflow) in self.workflow_bundle.iter_mut() {
 			info!("{}", workflow_id);
+			let (_, workflow) = workflow.get_latest_workflow();
+			if let Some(w) = workflow {
+				for task in w.workflow.tasks.iter() {
+					info!("Executing task {}", task.task_id);
+					let task = task.clone();
+					tokio::spawn(async move {
+						let mut client = ExecutorClient::connect("http://[::1]:50052".to_string()).await.unwrap();
+						let mut stream = client.execute_task(Request::new(task)).await.unwrap().into_inner();
+						while let Some(output) = stream.message().await.unwrap() {
+							info!("Response = {:?}", output);
+						}
+					});
+				}
+			}
 		}
 	}
 }
