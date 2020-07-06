@@ -12,7 +12,6 @@ use scheduler::Scheduler;
 #[tokio::main]
 async fn main() {
 	dotenv().ok();
-
 	env_logger::init();
 	info!("Starting flowty!");
 	

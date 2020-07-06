@@ -9,32 +9,36 @@ use std::thread;
 
 use tonic::Request;
 
+use chrono::prelude::*;
+
 use postgres::Client;
 
 use workflow::openworkflow::executor_client::ExecutorClient;
 
 mod workflow;
 
-const LOOP_INTERVAL_SEC : u64 = 2;
-
 pub struct Scheduler {
 	workflow_bundle: HashMap<String, workflow::Workflow>,
 }
 
 fn calc_loop_pause(loop_start: Instant) -> u64 {
+	let loop_interval_sec: u64 = dotenv::var("LOOP_INTERVAL_SEC")
+		.unwrap_or_default()
+		.parse()
+		.unwrap_or_else(|_| 30);
 	let elapsed_sec : u64 = loop_start.elapsed().as_secs();
 
 	trace!(
 		"Calculating loop pause.\nLOOP_INTERVAL_SEC: {}\nElapsed time in seconds: {}",
-		LOOP_INTERVAL_SEC,
+		loop_interval_sec,
 		elapsed_sec
 	);
-	if elapsed_sec < LOOP_INTERVAL_SEC {
-		return LOOP_INTERVAL_SEC - elapsed_sec;
+	if elapsed_sec < loop_interval_sec {
+		return loop_interval_sec - elapsed_sec;
 	}
 	warn!(
 		"Loop took longer than loop interval. Considering increasing the loop interval {}.",
-		LOOP_INTERVAL_SEC
+		loop_interval_sec
 	);
 	0
 }
@@ -103,23 +107,11 @@ impl Scheduler {
 	}
 
 	fn process_workflows(&mut self) {
-		// for (workflow_id, workflow) in self.workflow_bundle.iter_mut() {
-		// 	info!("Processing workflow: '{}'", workflow_id);
-		// 	let (_, workflow) = workflow.get_latest_workflow();
-		// 	if let Some(w) = workflow {
-		// 		for task in w.workflow.tasks.iter() {
-		// 			info!("Executing task {}", task.task_id);
-		// 			// let task = task.clone();
-		// 			// tokio::spawn(async move {
-		// 			// 	let mut client = ExecutorClient::connect("http://[::1]:50052".to_string()).await.unwrap();
-		// 			// 	let mut stream = client.execute_task(Request::new(task)).await.unwrap().into_inner();
-		// 			// 	while let Some(output) = stream.message().await.unwrap() {
-		// 			// 		info!("Response = {:?}", output);
-		// 			// 	}
-		// 			// });
-		// 		}
-		// 	}
-		// }
+		let now = Utc::now();
+		for (workflow_id, workflow) in self.workflow_bundle.iter_mut() {
+			info!("Processing workflow: '{}'", workflow_id);
+			workflow.tick(now);
+		}
 	}
 }
 
