@@ -1,22 +1,14 @@
 default: help
 
-.PHONY: build run clean help docker
+.PHONY: docker psql
 
-build:	#: cargo build
-	@echo "🚧 Building Flowty"
-	cargo build
-	@echo "✅ Done building"
-
-run: LOG_LEVEL:=trace
-run:	#: cargo run
-	@echo "🏃‍ Running Flowty"
-	RUST_LOG=$(LOG_LEVEL) cargo run
-	@echo "✅"
-
-clean:			#: cargo clean
-	@echo "🗑️ Cleaning up"
-	cargo clean
-	@echo "✅ Cleanup complete"
+psql: PSQL_DATA_FOLDER:=data
+psql: PSQL_PASSWORD:=flowty
+psql:
+	@echo "🐘 Starting Postgres in 🐋docker"
+	mkdir -p $(PSQL_DATA_FOLDER)
+	docker run -d -e POSTGRES_PASSWORD=$(PSQL_PASSWORD) -e PGDATA=/var/lib/postgresql/data -p 5432:5432 -v `pwd`/$(PSQL_DATA_FOLDER):/var/lib/postgresql/data postgres
+	@echo "✅ Started"
 
 docker: DOCKER_TAG:=latest
 docker:			#: Build the docker image

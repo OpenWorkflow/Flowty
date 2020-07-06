@@ -1,2 +1,2 @@
 # flowty
-flowt aims to be a (PoC) implementation of OpenWorkflow.
+flowty aims to be a (PoC) implementation of OpenWorkflow.

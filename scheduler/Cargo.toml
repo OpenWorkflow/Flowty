@@ -9,16 +9,18 @@ edition = "2018"
 [dependencies]
 log = "~0.4"
 env_logger = "~0.7"
+
+dotenv = "~0.15"
+
 chrono = "~0.4"
 time = "~0.1"
 cron = "~0.6"
+
 prost = "~0.6"
 prost-types = "~0.6"
 tokio = { version = "~0.2", features = ["rt-threaded", "time", "stream", "fs", "macros", "uds"] }
 tonic = { version = "~0.2", features = ["codegen", "prost", "async-trait", "tls"] }
-bytes = "~0.5"
-config = "~0.10"
-postgres = { version = "~0.17", features = ["with-chrono-0_4"] }
+postgres = { version = "~0.17", features = ["with-chrono-0_4", "with-uuid-0_8"] }
 
 [build-dependencies]
 tonic-build = { version = "~0.2", features = ["prost"] }
