@@ -84,7 +84,6 @@ impl FlowtyExecutionBroker {
 			}
 		}
 		None
-
 	}
 }
 

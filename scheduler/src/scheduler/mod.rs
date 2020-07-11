@@ -2,30 +2,30 @@ extern crate log;
 
 use log::{info, trace, warn};
 
-use std::string::String;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
-use std::thread;
 
-use tonic::Request;
+use tokio::time;
 
 use chrono::prelude::*;
 
-use postgres::Client;
+use crate::utils;
 
-use workflow::openworkflow::executor_client::ExecutorClient;
+pub mod openworkflow {
+	tonic::include_proto!("openworkflow");
+}
 
 mod workflow;
+mod workflow_instance;
 
 pub struct Scheduler {
 	workflow_bundle: HashMap<String, workflow::Workflow>,
 }
 
 fn calc_loop_pause(loop_start: Instant) -> u64 {
-	let loop_interval_sec: u64 = dotenv::var("LOOP_INTERVAL_SEC")
-		.unwrap_or_default()
-		.parse()
-		.unwrap_or_else(|_| 30);
+	let loop_interval_sec: u64 = utils::get_env("LOOP_INTERVAL_SEC", "30".into())
+								.parse()
+								.unwrap_or_else(|_| 30);
 	let elapsed_sec : u64 = loop_start.elapsed().as_secs();
 
 	trace!(
@@ -48,27 +48,27 @@ impl Scheduler {
 		Scheduler{workflow_bundle: HashMap::new()}
 	}
 
-	pub fn run(&mut self, client: &mut Client) {
+	pub async fn run(&mut self, client: &tokio_postgres::Client) {
 		info!("Starting scheduler loop");
 		loop {
 			let now = Instant::now();
-			
-			self.harvest_workflows(client);
-			self.process_workflows();
 
-			thread::sleep(Duration::from_secs(calc_loop_pause(now)));
-			break;
+			self.harvest_workflows(client).await;
+			self.process_workflows(client).await;
+
+			time::delay_for(Duration::from_secs(calc_loop_pause(now))).await;
+			break;  // Remove
 		}
 	}
 
-	fn harvest_workflows(&mut self, client: &mut Client) {
+	async fn harvest_workflows(&mut self, client: &tokio_postgres::Client) {
 		let result = client
 			.query("WITH latest AS (
 				SELECT MAX(wid) AS wid, workflow_id FROM workflow GROUP BY workflow_id
 			)
 			SELECT workflow.workflow_id, workflow.openworkflow_message
 			FROM workflow JOIN latest ON workflow.wid = latest.wid;", &[]
-			);
+			).await;
 
 		match result {
 			Ok(rows) => {
@@ -87,7 +87,10 @@ impl Scheduler {
 									workflow.update_workflow(w, false);
 								} else {
 									trace!("Brand new workflow received");
-									self.workflow_bundle.insert(workflow_id.to_string(), workflow::Workflow::new(w));
+									self.workflow_bundle.insert(
+										workflow_id.to_string(),
+										workflow::Workflow::new(w)
+									);
 								}
 							},
 							Err(e) => {
@@ -106,13 +109,29 @@ impl Scheduler {
 		}
 	}
 
-	fn process_workflows(&mut self) {
+	async fn process_workflows(&mut self, client: &tokio_postgres::Client) {
 		let now = Utc::now();
 		for (workflow_id, workflow) in self.workflow_bundle.iter_mut() {
 			info!("Processing workflow: '{}'", workflow_id);
-			workflow.tick(now);
+			workflow.tick(client, now).await;
 		}
 	}
+}
+
+use snafu::Snafu;
+
+#[derive(Debug, Snafu)]
+enum FlowtyError {
+	#[snafu(display("Failed to execute task: {}", message))]
+	ExecutionError {
+		message: String,
+	},
+	#[snafu(display("No executor found for task '{}' in workflow '{}': {}", task, workflow, message))]
+	ExecutorNotFound {
+		task: String,
+		workflow: String,
+		message: String,
+	},
 }
 
 #[cfg(test)]
