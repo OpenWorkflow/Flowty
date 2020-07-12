@@ -110,7 +110,8 @@ impl WorkflowInstance {
 	}
 
 	pub async fn run(&mut self, sql_client: &tokio_postgres::Client) {
-		trace!("Starting workflow ");
+		info!("Starting workflow '{}'", self.workflow_id);
+		
 	}
 
 	pub fn get_run_state(&self) -> &RunState {

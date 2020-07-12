@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use chrono::Duration;
 use prost::{Message, DecodeError};
 
-use openworkflow::{Execution, Task, RunCondition};
+use openworkflow::{Execution, Task, RunCondition, ExecutionStatus};
 
 // ===== ===== ===== ===== ===== \\
 // protobuf interactions
@@ -50,34 +50,34 @@ pub fn i32_to_run_condition(condition: i32) -> Option<RunCondition> {
 	}
 }
 
-#[allow(dead_code)]
-pub struct TaskExecutionDetails {
+pub struct TaskInstance {
 	retries: u32,
+	max_retries: u32,
 	retry_interval: Duration,
 	execution_details: Execution,
+	execution_status: Option<ExecutionStatus>,
 	run_condition: Option<RunCondition>,
 	downstream_tasks: Vec<String>,
 }
 
 // Todo: Optimize
 fn check_dependencies(
-	graph: &HashMap<String, TaskExecutionDetails>, task_id: String, downstream_tasks: Vec<String>
+	graph: &HashMap<String, TaskInstance>, task_id: String, downstream_tasks: Vec<String>
 ) -> bool {
 	for d in graph.get(&task_id).unwrap().downstream_tasks.iter() {
 		if downstream_tasks.contains(&d) {
 			return false;
 		}
 		let mut dd = downstream_tasks.clone();
-		dd.push("A".into());
+		dd.push(task_id.clone());
 		if check_dependencies(graph, d.into(), dd) == false {
 			return false;
 		}
 	}
-
 	true
 }
 
-pub struct Dag (HashMap<String, TaskExecutionDetails>);
+pub struct Dag (HashMap<String, TaskInstance>);
 
 impl Dag {
 	pub fn from_tasks(tasks: &Vec<Task>) -> Result<Dag, FlowtyError> {
@@ -94,15 +94,17 @@ impl Dag {
 				.try_into()
 				.unwrap_or_default()
 			).unwrap();
-			let ted = TaskExecutionDetails {
-				retries: task.retries,
+			let ti = TaskInstance {
+				retries: 0,
+				max_retries: task.retries,
 				retry_interval: retry_interval,
 				execution_details: task.execution.clone().unwrap(),
+				execution_status: None,
 				run_condition: i32_to_run_condition(task.condition),
 				downstream_tasks: task.downstream_tasks.clone(),
 			};
 
-			graph.insert(task.task_id.clone(), ted);
+			graph.insert(task.task_id.clone(), ti);
 		}
 
 		// Check for cycles
@@ -113,6 +115,10 @@ impl Dag {
 		}
 
 		Ok(Dag(graph))
+	}
+
+	pub fn get_next_for_execution(&self) -> &TaskInstance {
+
 	}
 }
 

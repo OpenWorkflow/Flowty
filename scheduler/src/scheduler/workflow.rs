@@ -72,13 +72,6 @@ impl Workflow {
 			.filter(|i| matches!(i.get_run_state(), RunState::Queued | RunState::Running))
 			.collect();
 
-		// Check if there is action on an active instance
-		for active_instance in active_instances.iter() {
-			if matches!(active_instance.get_run_state(), RunState::Running) {
-			}
-		}
-
-		// Check if new instances should be spawned
 		if active_instances.len() as u32 >= self.workflow.max_active_runs {
 			trace!("Amount of active runs exceeds max active runs for '{}': {} >= {}",
 				self.workflow.workflow_id,
