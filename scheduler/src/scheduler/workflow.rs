@@ -1,37 +1,13 @@
 extern crate cron;
 
-use std::io::Cursor;
 use std::str::FromStr;
 
 use cron::Schedule;
 use chrono::prelude::*;
+use tokio::task::JoinHandle;
 
-use prost::{Message, DecodeError};
-
-use super::openworkflow;
+use flowty_types::{openworkflow_from_binary, openworkflow};
 use super::workflow_instance::{WorkflowInstance, RunState};
-
-fn validate_openworkflow(openworkflow: Result<openworkflow::Workflow, DecodeError>) -> Result<openworkflow::Workflow, DecodeError> {
-	// #TODO
-	match openworkflow {
-		Ok(w) => {
-			Ok(w)
-		},
-		Err(e) => Err(e)
-	}
-}
-
-#[allow(dead_code)]
-pub fn openworkflow_from_file<P: AsRef<std::path::Path>>(path: P) -> Result<openworkflow::Workflow, DecodeError> {
-	let c = std::fs::read(path).unwrap();
-	let c = Cursor::new(c);
-	validate_openworkflow(Message::decode(c))
-}
-
-pub fn openworkflow_from_binary(binary: &[u8]) -> Result<openworkflow::Workflow, DecodeError> {
-	let c = Cursor::new(binary);
-	Message::decode(c)
-}
 
 pub struct Workflow {
 	pub workflow: openworkflow::Workflow,
@@ -43,7 +19,12 @@ pub struct Workflow {
 impl Workflow {
 	pub fn new(workflow: openworkflow::Workflow) -> Workflow {
 		let schedule = Schedule::from_str(workflow.schedule.as_str().clone()).unwrap();
-		Workflow{workflow: workflow, schedule: schedule, last_tick: None, workflow_instances: vec![]}
+		Workflow {
+			workflow: workflow,
+			schedule: schedule,
+			last_tick: None,
+			workflow_instances: Vec::new(),
+		}
 	}
 
 	pub fn update_workflow(&mut self, openworkflow: openworkflow::Workflow, reset_tick: bool) {
@@ -69,10 +50,35 @@ impl Workflow {
 			return;
 		}
 
+		self.run_instances(sql_client).await;
+		self.queue_instances(sql_client, now).await;
+
+		self.last_tick = Some(now);
+	}
+
+	async fn run_instances(&mut self, sql_client: &tokio_postgres::Client) {
+		let queued_instances = self.workflow_instances
+			.iter_mut()
+			.filter(|i| matches!(i.get_run_state(), RunState::Queued));
+
+		for queued_instance in queued_instances {
+			queued_instance.run(sql_client).await;
+		}
+	}
+
+	async fn queue_instances(&mut self, sql_client: &tokio_postgres::Client, now: DateTime<Utc>) {
 		let active_instances: Vec<&WorkflowInstance> = self.workflow_instances
 			.iter()
 			.filter(|i| matches!(i.get_run_state(), RunState::Queued | RunState::Running))
 			.collect();
+
+		// Check if there is action on an active instance
+		for active_instance in active_instances.iter() {
+			if matches!(active_instance.get_run_state(), RunState::Running) {
+			}
+		}
+
+		// Check if new instances should be spawned
 		if active_instances.len() as u32 >= self.workflow.max_active_runs {
 			trace!("Amount of active runs exceeds max active runs for '{}': {} >= {}",
 				self.workflow.workflow_id,
@@ -88,11 +94,12 @@ impl Workflow {
 				break;
 			}
 			info!("Creating workflow instance for '{}' at time {}", self.workflow.workflow_id, instance);
-			if let Ok(mut wi) = WorkflowInstance::new(sql_client, &self.workflow.workflow_id, instance).await {
+			if let Ok(mut wi) = WorkflowInstance::new(
+				sql_client, &self.workflow.workflow_id, &self.workflow.tasks, instance
+				).await {
 				wi.queue(sql_client).await;
 				self.workflow_instances.push(wi);
 			}
 		}
-		self.last_tick = Some(now);
 	}
 }

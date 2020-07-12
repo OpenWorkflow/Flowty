@@ -3,6 +3,7 @@ members = [
     "scheduler",
     "execution-broker",
     "local-executor",
+    "flowty-types",
 ]
 
 [profile.dev]

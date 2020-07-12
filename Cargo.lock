@@ -294,6 +294,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37ab347416e802de484e4d03c7316c48f1ecb56574dfd4a46a80f173ce1de04d"
 
 [[package]]
+name = "flowty-types"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "prost",
+ "prost-types",
+ "snafu",
+ "tonic",
+ "tonic-build",
+]
+
+[[package]]
 name = "fnv"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -632,13 +644,13 @@ version = "0.1.0"
 dependencies = [
  "async-stream",
  "env_logger",
+ "flowty-types",
  "futures",
  "log",
  "prost",
  "prost-types",
  "tokio",
  "tonic",
- "tonic-build",
 ]
 
 [[package]]
@@ -1163,15 +1175,12 @@ dependencies = [
  "cron",
  "dotenv",
  "env_logger",
+ "flowty-types",
  "log",
- "prost",
- "prost-types",
  "snafu",
- "time",
  "tokio",
  "tokio-postgres",
  "tonic",
- "tonic-build",
 ]
 
 [[package]]

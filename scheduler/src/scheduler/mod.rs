@@ -11,10 +11,6 @@ use chrono::prelude::*;
 
 use crate::utils;
 
-pub mod openworkflow {
-	tonic::include_proto!("openworkflow");
-}
-
 mod workflow;
 mod workflow_instance;
 
@@ -78,7 +74,7 @@ impl Scheduler {
 
 					info!("Parsing workflow with workflow_id '{}' from db", workflow_id);
 					if let Some(w) = openworkflow {
-						let w = workflow::openworkflow_from_binary(w);
+						let w = flowty_types::openworkflow_from_binary(w);
 						match w {
 							Ok(w) => {
 								if self.workflow_bundle.contains_key(workflow_id) {
@@ -116,22 +112,6 @@ impl Scheduler {
 			workflow.tick(client, now).await;
 		}
 	}
-}
-
-use snafu::Snafu;
-
-#[derive(Debug, Snafu)]
-enum FlowtyError {
-	#[snafu(display("Failed to execute task: {}", message))]
-	ExecutionError {
-		message: String,
-	},
-	#[snafu(display("No executor found for task '{}' in workflow '{}': {}", task, workflow, message))]
-	ExecutorNotFound {
-		task: String,
-		workflow: String,
-		message: String,
-	},
 }
 
 #[cfg(test)]

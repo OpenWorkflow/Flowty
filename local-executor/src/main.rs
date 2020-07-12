@@ -7,16 +7,12 @@ use std::io::{BufReader, BufRead};
 use tonic::{transport::Server, Request, Response, Status, Code};
 use tokio::sync::mpsc;
 
-use openworkflow::executor_server::{Executor, ExecutorServer};
-use openworkflow::{
+use flowty_types::openworkflow::executor_server::{Executor, ExecutorServer};
+use flowty_types::openworkflow::{
 	Task,
 	ExecutionOutput,
 	ExecutionStatus
 };
-
-pub mod openworkflow {
-	tonic::include_proto!("openworkflow");
-}
 
 #[derive(Default)]
 pub struct LocalExecutor {}
