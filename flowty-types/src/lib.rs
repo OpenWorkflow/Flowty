@@ -50,7 +50,9 @@ pub fn i32_to_run_condition(condition: i32) -> Option<RunCondition> {
 	}
 }
 
+#[derive(PartialEq)]
 pub struct TaskInstance {
+	is_root: bool,
 	retries: u32,
 	max_retries: u32,
 	retry_interval: Duration,
@@ -77,12 +79,27 @@ fn check_dependencies(
 	true
 }
 
-pub struct Dag (HashMap<String, TaskInstance>);
+pub type Edge = (String, String);
+pub struct Dag {
+	nodes: HashMap<String, TaskInstance>,
+	edges: Vec<Edge>,
+
+	// Iteratorstate
+	iter_init: bool,
+	current_steps: Vec<String>,
+	passed_steps: Vec<String>,
+}
 
 impl Dag {
 	pub fn from_tasks(tasks: &Vec<Task>) -> Result<Dag, FlowtyError> {
-		// Add tasks
-		let mut graph = HashMap::with_capacity(tasks.len());
+		let mut edges: Vec<Edge> = Vec::new();
+		for task in tasks {
+			for d in &task.downstream_tasks {
+				edges.push((task.task_id.clone(), d.clone()));
+			}
+		}
+
+		let mut nodes = HashMap::with_capacity(tasks.len());
 		for task in tasks {
 			if task.execution.is_none() {
 				return Err(FlowtyError::ParsingError);
@@ -95,6 +112,7 @@ impl Dag {
 				.unwrap_or_default()
 			).unwrap();
 			let ti = TaskInstance {
+				is_root: !edges.iter().filter(|d| d.1 == task.task_id).count() == 0,
 				retries: 0,
 				max_retries: task.retries,
 				retry_interval: retry_interval,
@@ -104,22 +122,82 @@ impl Dag {
 				downstream_tasks: task.downstream_tasks.clone(),
 			};
 
-			graph.insert(task.task_id.clone(), ti);
+			nodes.insert(task.task_id.clone(), ti);
 		}
 
 		// Check for cycles
-		for (task_id, _) in graph.iter() {
-			if check_dependencies(&graph, task_id.into(), Vec::new()) == false {
+		for (task_id, _) in nodes.iter() {
+			if check_dependencies(&nodes, task_id.into(), Vec::new()) == false {
 				return Err(FlowtyError::CyclicDependencyError);
 			}
 		}
 
-		Ok(Dag(graph))
+		Ok(Dag{
+			nodes: nodes,
+			edges: edges,
+			iter_init: false,
+			current_steps: Vec::new(),
+			passed_steps: Vec::new(),
+		})
 	}
 
-	pub fn get_next_for_execution(&self) -> &TaskInstance {
-
+	fn get_roots(&self) -> impl Iterator<Item = (&String, &TaskInstance)> {
+		self.nodes.iter().filter(|(_, ti)| ti.is_root)
 	}
+}
+
+/**
+ * Todo: Optimize this hot mess of a graph
+ */
+impl Iterator for Dag {
+	type Item = Vec<String>;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		if !self.iter_init {
+			self.current_steps = self.get_roots().map(|(task_id, _)| task_id.clone()).collect();
+			self.iter_init = true;
+			return Some(self.current_steps.clone());
+		}
+
+		let mut next_steps: Self::Item = Vec::new();
+		for edge in self.edges.iter().filter(|(l, r)| self.current_steps.contains(l) && !self.passed_steps.contains(r)) {
+			next_steps.push(edge.1.clone());
+		}
+		next_steps.sort();
+		next_steps.dedup();
+		self.passed_steps.append(&mut self.current_steps);
+		self.current_steps = next_steps.clone();
+		if next_steps.is_empty() {
+			None
+		} else {
+			Some(next_steps)
+		}
+	}
+
+	// fn next(&mut self) -> Option<Self::Item> {
+	// 	if !self.iter_init {
+	// 		self.current_steps = self.get_roots().map(|(task_id, _)| task_id.clone()).collect();
+	// 		self.iter_init = true;
+	// 	}
+
+	// 	let mut current_steps: Self::Item = Vec::new();
+	// 	for step in &self.current_steps {
+	// 		match self.nodes.get(step) {
+	// 			Some(s) => {
+	// 				current_steps.append(&mut s.downstream_tasks.clone());
+	// 			},
+	// 			_ => (),
+	// 		}
+	// 	}
+
+	// 	self.passed_steps.append(&mut self.current_steps);
+	// 	self.current_steps = current_steps.clone();
+	// 	if self.current_steps.is_empty() {
+	// 		None
+	// 	} else {
+	// 		Some(current_steps)
+	// 	}
+	// }
 }
 
 // ===== ===== ===== ===== ===== \\

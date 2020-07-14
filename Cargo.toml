@@ -1,9 +1,9 @@
 [workspace]
 members = [
+    "flowty-types",
     "scheduler",
     "execution-broker",
     "local-executor",
-    "flowty-types",
 ]
 
 [profile.dev]
