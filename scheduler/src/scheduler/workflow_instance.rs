@@ -39,6 +39,7 @@ pub struct WorkflowInstance {
 	run_state: RunState,
 	run_date: DateTime<Utc>,
 	dag: Dag,
+	task_instances: Vec<flowty_types::TaskInstance>,
 }
 
 impl WorkflowInstance {
@@ -61,6 +62,7 @@ impl WorkflowInstance {
 							run_state: RunState::Nothing,
 							run_date: run_date,
 							dag: dag,
+							task_instances: Vec::new(),
 						})
 					},
 					Err(e) => {
@@ -76,23 +78,32 @@ impl WorkflowInstance {
 	}
 
 	/*
-	 * Create a DAG, which is what will be used for execution, as long as it is not forcebly reloaded.
-	 * In case the workflow changes, we can continue execution of already existing instances.
+	 * Update the internal run_state and the run_state in the DB. Does not perform any checks!
 	**/
-
-	pub async fn queue(&mut self, sql_client: &tokio_postgres::Client) {
-		if matches!(self.run_state, RunState::Queued | RunState::Running | RunState::Success) {
-			return;
-		}
+	async fn update_run_state(&mut self, sql_client: &tokio_postgres::Client, run_state: RunState) {
+		let state: &str = (match run_state {
+			RunState::Nothing => "nothing",
+			RunState::Queued => "queued",
+			RunState::Running => "running",
+			RunState::Success => "success",
+			RunState::Failed => "failed",
+		}).into();
 		let result = sql_client.execute(
-			"UPDATE workflow_instance SET run_state = 'queued' WHERE wiid = $1",
-			&[&self.wiid]
+			"UPDATE workflow_instance SET run_state = $2 WHERE wiid = $1",
+			&[&self.wiid, &state]
 		).await;
 		match result {
 			Err(e) => error!("Failed to update workflow_instance:{}\nScheduler state might de-sync!", e),
 			_ => (),
 		};
-		self.run_state = RunState::Queued;
+		self.run_state = run_state;
+	}
+
+	pub async fn queue(&mut self, sql_client: &tokio_postgres::Client) {
+		if matches!(self.run_state, RunState::Queued | RunState::Running | RunState::Success) {
+			return;
+		}
+		self.update_run_state(sql_client, RunState::Queued).await;
 		/*
 			Err(e) => {
 				error!("Failed to find an apprioriate executor: {}", e);
@@ -111,7 +122,25 @@ impl WorkflowInstance {
 
 	pub async fn run(&mut self, sql_client: &tokio_postgres::Client) {
 		info!("Starting workflow '{}'", self.workflow_id);
-		self.dag.get_next_for_execution()
+
+		// Check active 
+
+		match self.dag.next() {
+			Some(next_tasks) => {
+				for task in next_tasks {
+					let ti = self.dag.get_task_instance(task.as_str());
+
+					let handle = task::spawn_blocking(|| {
+
+					});
+				}
+			},
+			None => self.finish(sql_client).await,
+		};
+	}
+
+	pub async fn finish(&mut self, sql_client: &tokio_postgres::Client) {
+
 	}
 
 	pub fn get_run_state(&self) -> &RunState {

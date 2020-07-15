@@ -298,6 +298,7 @@ name = "flowty-types"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "petgraph",
  "prost",
  "prost-types",
  "snafu",

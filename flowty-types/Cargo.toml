@@ -9,7 +9,7 @@ edition = "2018"
 [dependencies]
 snafu = "~0.6"
 chrono = "~0.4"
-
+petgraph = { version = "~0.5", default-features = false }
 prost = "~0.6"
 prost-types = "~0.6"
 tonic = { version = "~0.2", features = ["codegen", "prost"] }

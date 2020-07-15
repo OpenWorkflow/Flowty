@@ -1,7 +1,7 @@
 use std::convert::TryInto;
 use std::io::Cursor;
-use std::collections::HashMap;
-
+use petgraph::Graph;
+use petgraph::algo;
 use chrono::Duration;
 use prost::{Message, DecodeError};
 
@@ -38,68 +38,42 @@ pub fn openworkflow_from_binary(binary: &[u8]) -> Result<openworkflow::Workflow,
 // ===== ===== ===== ===== ===== \\
 // Dag
 // ===== ===== ===== ===== ===== //
-pub fn i32_to_run_condition(condition: i32) -> Option<RunCondition> {
-	match condition {
-		0 => Some(RunCondition::AllDone),
-		1 => Some(RunCondition::OneDone),
-		2 => Some(RunCondition::AllSuccess),
-		3 => Some(RunCondition::OneSuccess),
-		4 => Some(RunCondition::AllFailed),
-		5 => Some(RunCondition::OneFailed),
-		_ => None
+impl From<i32> for RunCondition {
+	fn from(condition: i32) -> Self {
+		match condition {
+			1 => RunCondition::AllDone,
+			2 => RunCondition::OneDone,
+			3 => RunCondition::AllSuccess,
+			4 => RunCondition::OneSuccess,
+			5 => RunCondition::AllFailed,
+			6 => RunCondition::OneFailed,
+			_ => RunCondition::None,
+		}
 	}
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 pub struct TaskInstance {
-	is_root: bool,
+	task_id: String,
 	retries: u32,
 	max_retries: u32,
 	retry_interval: Duration,
 	execution_details: Execution,
 	execution_status: Option<ExecutionStatus>,
-	run_condition: Option<RunCondition>,
+	run_condition: RunCondition,
 	downstream_tasks: Vec<String>,
 }
 
-// Todo: Optimize
-fn check_dependencies(
-	graph: &HashMap<String, TaskInstance>, task_id: String, downstream_tasks: Vec<String>
-) -> bool {
-	for d in graph.get(&task_id).unwrap().downstream_tasks.iter() {
-		if downstream_tasks.contains(&d) {
-			return false;
-		}
-		let mut dd = downstream_tasks.clone();
-		dd.push(task_id.clone());
-		if check_dependencies(graph, d.into(), dd) == false {
-			return false;
-		}
-	}
-	true
-}
-
-pub type Edge = (String, String);
+type Node = TaskInstance;
+type Edge = RunCondition;
 pub struct Dag {
-	nodes: HashMap<String, TaskInstance>,
-	edges: Vec<Edge>,
-
-	// Iteratorstate
-	iter_init: bool,
-	current_steps: Vec<String>,
-	passed_steps: Vec<String>,
+	graph: Graph::<Node, Edge>,
+	task_instances: Vec<TaskInstance>,
 }
 
 impl Dag {
 	pub fn from_tasks(tasks: &Vec<Task>) -> Result<Dag, FlowtyError> {
-		let mut edges: Vec<Edge> = Vec::new();
-		for task in tasks {
-			for d in &task.downstream_tasks {
-				edges.push((task.task_id.clone(), d.clone()));
-			}
-		}
-
-		let mut nodes = HashMap::with_capacity(tasks.len());
+		let mut graph = Graph::<Node, Edge>::new();
 		for task in tasks {
 			if task.execution.is_none() {
 				return Err(FlowtyError::ParsingError);
@@ -112,92 +86,56 @@ impl Dag {
 				.unwrap_or_default()
 			).unwrap();
 			let ti = TaskInstance {
-				is_root: !edges.iter().filter(|d| d.1 == task.task_id).count() == 0,
+				task_id: task.task_id.clone(),
 				retries: 0,
 				max_retries: task.retries,
 				retry_interval: retry_interval,
 				execution_details: task.execution.clone().unwrap(),
 				execution_status: None,
-				run_condition: i32_to_run_condition(task.condition),
+				run_condition: RunCondition::from(task.condition),
 				downstream_tasks: task.downstream_tasks.clone(),
 			};
-
-			nodes.insert(task.task_id.clone(), ti);
+			graph.add_node(ti);
 		}
 
-		// Check for cycles
-		for (task_id, _) in nodes.iter() {
-			if check_dependencies(&nodes, task_id.into(), Vec::new()) == false {
-				return Err(FlowtyError::CyclicDependencyError);
+		for parent_index in graph.node_indices() {
+			let ti = &graph[parent_index].clone();
+			for downstream_task in &ti.downstream_tasks {
+				match graph.node_indices().find(|i| graph[*i].task_id == *downstream_task) {
+					Some(child_index) => {
+						graph.update_edge(parent_index, child_index, graph[child_index].run_condition);
+					},
+					None => ()
+				};
 			}
 		}
 
-		Ok(Dag{
-			nodes: nodes,
-			edges: edges,
-			iter_init: false,
-			current_steps: Vec::new(),
-			passed_steps: Vec::new(),
-		})
-	}
+		if algo::is_cyclic_directed(&graph) {
+			return Err(FlowtyError::CyclicDependencyError);
+		}
 
-	fn get_roots(&self) -> impl Iterator<Item = (&String, &TaskInstance)> {
-		self.nodes.iter().filter(|(_, ti)| ti.is_root)
+		Ok(Dag{
+			graph: graph,
+			task_instances: Vec::new(),
+		})
 	}
 }
 
-/**
- * Todo: Optimize this hot mess of a graph
- */
 impl Iterator for Dag {
-	type Item = Vec<String>;
+	type Item = Vec<TaskInstance>;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		if !self.iter_init {
-			self.current_steps = self.get_roots().map(|(task_id, _)| task_id.clone()).collect();
-			self.iter_init = true;
-			return Some(self.current_steps.clone());
+		let mut stage: Self::Item = Vec::new();
+		for nodes in algo::toposort(&self.graph, None) {
+
 		}
 
-		let mut next_steps: Self::Item = Vec::new();
-		for edge in self.edges.iter().filter(|(l, r)| self.current_steps.contains(l) && !self.passed_steps.contains(r)) {
-			next_steps.push(edge.1.clone());
-		}
-		next_steps.sort();
-		next_steps.dedup();
-		self.passed_steps.append(&mut self.current_steps);
-		self.current_steps = next_steps.clone();
-		if next_steps.is_empty() {
+		if stage.len() == 0 {
 			None
 		} else {
-			Some(next_steps)
+			Some(stage)
 		}
 	}
-
-	// fn next(&mut self) -> Option<Self::Item> {
-	// 	if !self.iter_init {
-	// 		self.current_steps = self.get_roots().map(|(task_id, _)| task_id.clone()).collect();
-	// 		self.iter_init = true;
-	// 	}
-
-	// 	let mut current_steps: Self::Item = Vec::new();
-	// 	for step in &self.current_steps {
-	// 		match self.nodes.get(step) {
-	// 			Some(s) => {
-	// 				current_steps.append(&mut s.downstream_tasks.clone());
-	// 			},
-	// 			_ => (),
-	// 		}
-	// 	}
-
-	// 	self.passed_steps.append(&mut self.current_steps);
-	// 	self.current_steps = current_steps.clone();
-	// 	if self.current_steps.is_empty() {
-	// 		None
-	// 	} else {
-	// 		Some(current_steps)
-	// 	}
-	// }
 }
 
 // ===== ===== ===== ===== ===== \\
