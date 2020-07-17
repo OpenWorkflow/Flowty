@@ -33,12 +33,14 @@ pub fn openworkflow_from_file<P: AsRef<std::path::Path>>(path: P) -> Result<open
 
 pub fn openworkflow_from_binary(binary: &[u8]) -> Result<openworkflow::Workflow, DecodeError> {
 	let c = Cursor::new(binary);
-	Message::decode(c)
+	validate_openworkflow(Message::decode(c))
 }
 
 // ===== ===== ===== ===== ===== \\
 // Dag
 // ===== ===== ===== ===== ===== //
+// From implements the standard cast
+// Everything not matching will be defaulted to None.
 impl From<i32> for RunCondition {
 	fn from(condition: i32) -> Self {
 		match condition {
@@ -90,7 +92,7 @@ impl Dag {
 				task_id: task.task_id.clone(),
 				retries: 0,
 				max_retries: task.retries,
-				retry_interval: retry_interval,
+				retry_interval,
 				execution_details: task.execution.clone().unwrap(),
 				execution_status: None,
 				run_condition: RunCondition::from(task.condition),
@@ -116,7 +118,7 @@ impl Dag {
 		}
 
 		Ok(Dag{
-			graph: graph,
+			graph,
 			task_instances: Vec::new(),
 		})
 	}
@@ -142,16 +144,27 @@ impl Iterator for Dag {
 		let mut stage: Self::Item = Vec::new();
 		let mut downstream: Vec<String> = Vec::new();
 		for node in algo::toposort(&self.graph, None).unwrap() {
+			let downstream_tasks = &self.graph[node].downstream_tasks;
 			if downstream.contains(&self.graph[node].task_id) {
+				match self.graph[node].run_condition {
+					RunCondition::OneDone => {
+						let parents = self.graph.edges_directed(node, Direction::Incoming)
+							.map(|edge| (edge.source()));
+
+					},
+				}
+
+				if edge.weight() == &RunCondition::AllDone {
+					downstream.append(&mut downstream_tasks.clone());
+					stage.push(node);
+					continue;
+				}
 				continue;
 			}
 			if task_instance_is_ready(&self.graph[node]) {
-				for edge in self.graph.edges_directed(node, Direction::Outgoing) {
+				for edge in self.graph.edges_directed(node, Direction::Incoming) {
 					
 				}
-				downstream.append(&mut self.graph[node].downstream_tasks.clone());
-				stage.push(node);
-				continue;
 			}
 		}
 
