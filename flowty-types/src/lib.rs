@@ -1,6 +1,7 @@
 use std::convert::TryInto;
 use std::io::Cursor;
-use petgraph::Graph;
+use petgraph::{Graph, Direction};
+use petgraph::graph::NodeIndex;
 use petgraph::algo;
 use chrono::Duration;
 use prost::{Message, DecodeError};
@@ -119,15 +120,39 @@ impl Dag {
 			task_instances: Vec::new(),
 		})
 	}
+
+	pub fn get_roots(&self) -> Vec<NodeIndex> {
+		self.graph.externals(Direction::Incoming).collect()
+	}
+}
+
+pub fn task_instance_is_ready(ti: &TaskInstance) -> bool {
+	match ti.execution_status {
+		None | 
+		Some(ExecutionStatus::Initializing) | 
+		Some(ExecutionStatus::Running) => true,
+		_ => false,
+	}
 }
 
 impl Iterator for Dag {
-	type Item = Vec<TaskInstance>;
+	type Item = Vec<NodeIndex>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		let mut stage: Self::Item = Vec::new();
-		for nodes in algo::toposort(&self.graph, None) {
-
+		let mut downstream: Vec<String> = Vec::new();
+		for node in algo::toposort(&self.graph, None).unwrap() {
+			if downstream.contains(&self.graph[node].task_id) {
+				continue;
+			}
+			if task_instance_is_ready(&self.graph[node]) {
+				for edge in self.graph.edges_directed(node, Direction::Outgoing) {
+					
+				}
+				downstream.append(&mut self.graph[node].downstream_tasks.clone());
+				stage.push(node);
+				continue;
+			}
 		}
 
 		if stage.len() == 0 {
