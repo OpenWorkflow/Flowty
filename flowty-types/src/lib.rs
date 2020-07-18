@@ -71,7 +71,6 @@ type Node = TaskInstance;
 type Edge = RunCondition;
 pub struct Dag {
 	graph: Graph::<Node, Edge>,
-	task_instances: Vec<TaskInstance>,
 }
 
 impl Dag {
@@ -119,7 +118,6 @@ impl Dag {
 
 		Ok(Dag{
 			graph,
-			task_instances: Vec::new(),
 		})
 	}
 
@@ -137,9 +135,19 @@ pub fn task_instance_is_ready(ti: &TaskInstance) -> bool {
 	}
 }
 
+pub fn task_instance_is_done(ti: &TaskInstance) -> bool {
+	match ti.execution_status {
+		Some(ExecutionStatus::Failed) | Some(ExecutionStatus::Success) => {
+			true
+		},
+		_ => false,
+	}
+}
+
 impl Iterator for Dag {
 	type Item = Vec<NodeIndex>;
 
+	///
 	fn next(&mut self) -> Option<Self::Item> {
 		let mut stage: Self::Item = Vec::new();
 		let mut downstream: Vec<String> = Vec::new();
@@ -147,24 +155,66 @@ impl Iterator for Dag {
 			let downstream_tasks = &self.graph[node].downstream_tasks;
 			if downstream.contains(&self.graph[node].task_id) {
 				match self.graph[node].run_condition {
-					RunCondition::OneDone => {
-						let parents = self.graph.edges_directed(node, Direction::Incoming)
-							.map(|edge| (edge.source()));
-
+					RunCondition::AllDone => {
+						let mut all_done = true;
+						for parent in self.graph.neighbors_directed(node, Direction::Incoming) {
+							if !task_instance_is_done(&self.graph[parent]) {
+								all_done = false;
+								break;
+							}
+						}
+						if all_done {
+							stage.push(node);
+							downstream.append(&mut downstream_tasks.clone());
+						}
 					},
-				}
-
-				if edge.weight() == &RunCondition::AllDone {
-					downstream.append(&mut downstream_tasks.clone());
-					stage.push(node);
-					continue;
-				}
-				continue;
-			}
-			if task_instance_is_ready(&self.graph[node]) {
-				for edge in self.graph.edges_directed(node, Direction::Incoming) {
-					
-				}
+					RunCondition::OneDone => {
+						for parent in self.graph.neighbors_directed(node, Direction::Incoming) {
+							if task_instance_is_done(&self.graph[parent]) {
+								stage.push(node);
+								downstream.append(&mut downstream_tasks.clone());
+								break;
+							}
+						}
+					},
+					RunCondition::AllSuccess => {
+						let mut all_success = true;
+						for parent in self.graph.neighbors_directed(node, Direction::Incoming) {
+							if !matches!(self.graph[parent].execution_status, Some(ExecutionStatus::Failed)) {
+								all_success = false;
+							}
+						}
+						if all_success {
+							stage.push(node);
+							downstream.append(&mut downstream_tasks.clone());
+						}
+					},
+					RunCondition::OneSuccess => {
+						for parent in self.graph.neighbors_directed(node, Direction::Incoming) {
+							if matches!(self.graph[parent].execution_status, Some(ExecutionStatus::Success)) {
+								stage.push(node);
+								downstream.append(&mut downstream_tasks.clone());
+								break;
+							}
+						}
+					},
+					RunCondition::AllFailed => {
+						let mut all_failed = true;
+						for parent in self.graph.neighbors_directed(node, Direction::Incoming) {
+							if !matches!(self.graph[parent].execution_status, Some(ExecutionStatus::Failed)) {
+								all_failed = false;
+							}
+						}
+						if all_failed {
+							stage.push(node);
+							downstream.append(&mut downstream_tasks.clone());
+						}
+					}
+					_ => (),
+				};
+			} else {
+				stage.push(node);
+				downstream.append(&mut downstream_tasks.clone());
 			}
 		}
 
