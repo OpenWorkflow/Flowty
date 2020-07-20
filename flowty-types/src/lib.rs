@@ -1,4 +1,5 @@
 use std::convert::TryInto;
+use std::convert::TryFrom;
 use std::io::Cursor;
 use petgraph::{Graph, Direction};
 use petgraph::graph::NodeIndex;
@@ -74,7 +75,15 @@ pub struct Dag {
 }
 
 impl Dag {
-	pub fn from_tasks(tasks: &Vec<Task>) -> Result<Dag, FlowtyError> {
+	pub fn get_roots(&self) -> Vec<NodeIndex> {
+		self.graph.externals(Direction::Incoming).collect()
+	}
+}
+
+impl TryFrom<&Vec<Task>> for Dag {
+	type Error = FlowtyError;
+
+	fn try_from(tasks: &Vec<Task>) -> Result<Dag, Self::Error> {
 		let mut graph = Graph::<Node, Edge>::new();
 		for task in tasks {
 			if task.execution.is_none() {
@@ -120,26 +129,18 @@ impl Dag {
 			graph,
 		})
 	}
-
-	pub fn get_roots(&self) -> Vec<NodeIndex> {
-		self.graph.externals(Direction::Incoming).collect()
-	}
 }
 
 pub fn task_instance_is_ready(ti: &TaskInstance) -> bool {
 	match ti.execution_status {
-		None | 
-		Some(ExecutionStatus::Initializing) | 
-		Some(ExecutionStatus::Running) => true,
+		None | Some(ExecutionStatus::Initializing) | Some(ExecutionStatus::Running) => true,
 		_ => false,
 	}
 }
 
 pub fn task_instance_is_done(ti: &TaskInstance) -> bool {
 	match ti.execution_status {
-		Some(ExecutionStatus::Failed) | Some(ExecutionStatus::Success) => {
-			true
-		},
+		Some(ExecutionStatus::Failed) | Some(ExecutionStatus::Success) => true,
 		_ => false,
 	}
 }
@@ -147,14 +148,28 @@ pub fn task_instance_is_done(ti: &TaskInstance) -> bool {
 impl Iterator for Dag {
 	type Item = Vec<NodeIndex>;
 
+	/// Traverse the Dag via the Iterator.
+	/// Returns the current execution stage of the Dag. Meaning all TaskInstances which are currently executing or
+	/// ready for execution.
 	///
+	/// Uses toposort to start from the top, then checks if a task's run_condition is met.
+	/// Whenever a task is added to the current stage, it's downstream tasks are saved.
+	/// If a task does not appear in the saved downstream list, it's immediatly added to the stage.
+	/// If a task is inside the downstream list, its run_condition is checked.
 	fn next(&mut self) -> Option<Self::Item> {
 		let mut stage: Self::Item = Vec::new();
 		let mut downstream: Vec<String> = Vec::new();
 		for node in algo::toposort(&self.graph, None).unwrap() {
+			if task_instance_is_done(&self.graph[node]) {
+				continue;
+			}
 			let downstream_tasks = &self.graph[node].downstream_tasks;
 			if downstream.contains(&self.graph[node].task_id) {
 				match self.graph[node].run_condition {
+					RunCondition::None => {
+						stage.push(node);
+						downstream.append(&mut downstream_tasks.clone());
+					},
 					RunCondition::AllDone => {
 						let mut all_done = true;
 						for parent in self.graph.neighbors_directed(node, Direction::Incoming) {
@@ -209,8 +224,16 @@ impl Iterator for Dag {
 							stage.push(node);
 							downstream.append(&mut downstream_tasks.clone());
 						}
-					}
-					_ => (),
+					},
+					RunCondition::OneFailed => {
+						for parent in self.graph.neighbors_directed(node, Direction::Incoming) {
+							if matches!(self.graph[parent].execution_status, Some(ExecutionStatus::Failed)) {
+								stage.push(node);
+								downstream.append(&mut downstream_tasks.clone());
+								break;
+							}
+						}
+					},
 				};
 			} else {
 				stage.push(node);

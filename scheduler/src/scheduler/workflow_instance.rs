@@ -1,3 +1,5 @@
+use std::convert::TryFrom;
+
 use chrono::prelude::*;
 use chrono::Duration;
 use tokio::task;
@@ -39,7 +41,6 @@ pub struct WorkflowInstance {
 	run_state: RunState,
 	run_date: DateTime<Utc>,
 	dag: Dag,
-	task_instances: Vec<flowty_types::TaskInstance>,
 }
 
 impl WorkflowInstance {
@@ -53,16 +54,15 @@ impl WorkflowInstance {
 			VALUES ($1, $2) RETURNING wiid;", &[workflow_id, &run_date.to_rfc3339()]).await;
 		match result {
 			Ok(row) => {
-				let dag = flowty_types::Dag::from_tasks(tasks);
+				let dag = Dag::try_from(tasks);
 				match dag {
 					Ok(dag) => {
 						Ok(WorkflowInstance {
 							wiid: row.get("wiid"),
 							workflow_id: workflow_id.to_string(),
 							run_state: RunState::Nothing,
-							run_date: run_date,
-							dag: dag,
-							task_instances: Vec::new(),
+							run_date,
+							dag,
 						})
 					},
 					Err(e) => {
@@ -122,8 +122,6 @@ impl WorkflowInstance {
 
 	pub async fn run(&mut self, sql_client: &tokio_postgres::Client) {
 		info!("Starting workflow '{}'", self.workflow_id);
-
-		// Check active 
 
 		match self.dag.next() {
 			Some(next_tasks) => {
