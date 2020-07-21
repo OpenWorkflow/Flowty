@@ -6,7 +6,7 @@ use cron::Schedule;
 use chrono::prelude::*;
 use tokio::task::JoinHandle;
 
-use flowty_types::{openworkflow_from_binary, openworkflow};
+use flowty_types::openworkflow;
 use super::workflow_instance::{WorkflowInstance, RunState};
 
 pub struct Workflow {
@@ -19,12 +19,7 @@ pub struct Workflow {
 impl Workflow {
 	pub fn new(workflow: openworkflow::Workflow) -> Workflow {
 		let schedule = Schedule::from_str(workflow.schedule.as_str().clone()).unwrap();
-		Workflow {
-			workflow: workflow,
-			schedule: schedule,
-			last_tick: None,
-			workflow_instances: Vec::new(),
-		}
+		Workflow {workflow, schedule, last_tick: None, workflow_instances: Vec::new()}
 	}
 
 	pub fn update_workflow(&mut self, openworkflow: openworkflow::Workflow, reset_tick: bool) {

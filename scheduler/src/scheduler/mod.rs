@@ -10,6 +10,7 @@ use tokio::time;
 use chrono::prelude::*;
 
 use crate::utils;
+use flowty_types;
 
 mod workflow;
 mod workflow_instance;
@@ -58,13 +59,7 @@ impl Scheduler {
 	}
 
 	async fn harvest_workflows(&mut self, client: &tokio_postgres::Client) {
-		let result = client
-			.query("WITH latest AS (
-				SELECT MAX(wid) AS wid, workflow_id FROM workflow GROUP BY workflow_id
-			)
-			SELECT workflow.workflow_id, workflow.openworkflow_message
-			FROM workflow JOIN latest ON workflow.wid = latest.wid;", &[]
-			).await;
+		let result = client.query(include_str!("harvest_workflows.sql"), &[]).await;
 
 		match result {
 			Ok(rows) => {
@@ -112,9 +107,4 @@ impl Scheduler {
 			workflow.tick(client, now).await;
 		}
 	}
-}
-
-#[cfg(test)]
-mod tests {
-	use super::*;
 }
