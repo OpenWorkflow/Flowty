@@ -6,20 +6,20 @@ use tokio::task;
 use tokio::task::JoinHandle;
 use tonic::Request;
 
+use flowty_types;
 use flowty_types::{Dag, FlowtyError};
-use crate::utils;
 use flowty_types::openworkflow::execution_broker_client::ExecutionBrokerClient;
 use flowty_types::openworkflow::{
 	Task,
 	Execution,
 	SearchRequest,
 	ExecutorDefinition,
-	executor_definition,
 	ExecutorKind,
 	LocalSpecification,
 	ExecutionStatus
 };
 
+use crate::utils;
 /*
 	RunState is a state automaton:
 	Nothing => Queued
@@ -50,8 +50,7 @@ impl WorkflowInstance {
 		tasks: &Vec<Task>,
 		run_date: DateTime<Utc>
 	) -> Result<WorkflowInstance, FlowtyError> {
-		let result = sql_client.query_one("INSERT INTO workflow_instance (workflow_id, run_date)
-			VALUES ($1, $2) RETURNING wiid;", &[workflow_id, &run_date.to_rfc3339()]).await;
+		let result = sql_client.query_one(include_str!("new_workflow_instance.sql"), &[workflow_id, &run_date.to_rfc3339()]).await;
 		match result {
 			Ok(row) => {
 				let dag = Dag::try_from(tasks);
@@ -77,9 +76,8 @@ impl WorkflowInstance {
 		}
 	}
 
-	/*
-	 * Update the internal run_state and the run_state in the DB. Does not perform any checks!
-	**/
+	/// Update the internal run_state and the run_state in the DB.
+	/// Does not perform any checks!
 	async fn update_run_state(&mut self, sql_client: &tokio_postgres::Client, run_state: RunState) {
 		let state: &str = (match run_state {
 			RunState::Nothing => "nothing",
@@ -88,10 +86,7 @@ impl WorkflowInstance {
 			RunState::Success => "success",
 			RunState::Failed => "failed",
 		}).into();
-		let result = sql_client.execute(
-			"UPDATE workflow_instance SET run_state = $2 WHERE wiid = $1",
-			&[&self.wiid, &state]
-		).await;
+		let result = sql_client.execute(include_str!("update_run_state.sql"), &[&self.wiid, &state]).await;
 		match result {
 			Err(e) => error!("Failed to update workflow_instance:{}\nScheduler state might de-sync!", e),
 			_ => (),
@@ -126,11 +121,18 @@ impl WorkflowInstance {
 		match self.dag.next() {
 			Some(next_tasks) => {
 				for task in next_tasks {
-					let ti = self.dag.get_task_instance(task.as_str());
+					let ti = self.dag.get_task_instance(task);
+					match ti.get_executor_definition() {
+						Ok(executor_definition) => {
+							let executor = find_executor().await;
+							let handle = task::spawn_blocking(|| {
 
-					let handle = task::spawn_blocking(|| {
-
-					});
+							});
+						},
+						Err(fe) => {
+							// todo: Fail Task
+						}
+					};
 				}
 			},
 			None => self.finish(sql_client).await,
@@ -146,27 +148,22 @@ impl WorkflowInstance {
 	}
 }
 
-/*
-async fn find_executor() -> Result<String, FlowtyError> {
+/// Asks the ExecutionBroker for a fitting executor.
+/// Returns the URI to the executor
+async fn find_executor(definition: &ExecutorDefinition) -> Result<String, FlowtyError> {
 	let broker_uri = utils::get_env("EXECUTION_BROKER_URI", "http://[::1]:50051".into());
-	let mut client = ExecutionBrokerClient::connect(broker_uri).await.unwrap();
-	match client.find_executor(Request::new(SearchRequest {
-			executor_definition: Some(ExecutorDefinition {
-				kind: ExecutorKind::Local.into(),
-				specs: Some(executor_definition::Specs::Local(LocalSpecification{packages: vec![]}))
-			})
-		})).await {
-		Ok(response) => {
-			Ok(response.into_inner().uri)
-		},
-		Err(e) => {
-			error!("Failed to find executor for ");
-			Err(FlowtyError::ExecutorNotFound {
-				task: "",
-				workflow: "",
-				message: e,
-			})
+	match ExecutionBrokerClient::connect(broker_uri).await {
+		Ok(client) => {
+			match client.find_executor(Request::new(SearchRequest {
+				executor_definition: Some(ExecutorDefinition {
+					kind: ExecutorKind::Local.into(),
+					specs: Some(executor_definition::Specs::Local(LocalSpecification{packages: vec![]}))
+				})
+			})).await {
+				Ok(response) => Ok(response.into_inner().uri),
+				Err(e) => Err(FlowtyError::ExecutorNotFound)
 		}
+		},
+		_ => Err(FlowtyError::ExecutionBrokerUnreachable)
 	}
 }
-*/

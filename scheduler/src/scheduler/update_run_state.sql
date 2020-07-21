@@ -1,0 +1,1 @@
+UPDATE workflow_instance SET run_state = $2 WHERE wiid = $1;

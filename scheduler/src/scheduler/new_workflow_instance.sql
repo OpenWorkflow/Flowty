@@ -1,0 +1,1 @@
+INSERT INTO workflow_instance (workflow_id, run_date) VALUES ($1, $2) RETURNING wiid;

@@ -68,6 +68,15 @@ pub struct TaskInstance {
 	downstream_tasks: Vec<String>,
 }
 
+impl TaskInstance {
+	pub fn get_executor_definition(&self) -> Result<&openworkflow::ExecutorDefinition, FlowtyError> {
+		match self.execution_details.executor {
+			Some(executor_definition) => Ok(&executor_definition),
+			_ => Err(FlowtyError::ExecutorDefinitionNotFound{task: self.task_id }),
+		}
+	}
+}
+
 type Node = TaskInstance;
 type Edge = RunCondition;
 pub struct Dag {
@@ -77,6 +86,10 @@ pub struct Dag {
 impl Dag {
 	pub fn get_roots(&self) -> Vec<NodeIndex> {
 		self.graph.externals(Direction::Incoming).collect()
+	}
+
+	pub fn get_task_instance(&self, node_index: NodeIndex) -> &Node {
+		&self.graph[node_index]
 	}
 }
 
@@ -125,9 +138,7 @@ impl TryFrom<&Vec<Task>> for Dag {
 			return Err(FlowtyError::CyclicDependencyError);
 		}
 
-		Ok(Dag{
-			graph,
-		})
+		Ok(Dag{graph})
 	}
 }
 
@@ -262,12 +273,14 @@ pub enum FlowtyError {
 	},
 	#[snafu(display("Failed to parse DAG"))]
 	ParsingError,
-	#[snafu(display("No executor found for task '{}' in workflow '{}': {}", task, workflow, message))]
-	ExecutorNotFound {
+	#[snafu(display("No executor definition set for task '{}'", task))]
+	ExecutorDefinitionNotFound {
 		task: String,
-		workflow: String,
-		message: String,
 	},
+	#[snafu(display("Failed to reach ExecutionBroker"))]
+	ExecutionBrokerUnreachable,
+	#[snafu(display("No executor found"))]
+	ExecutorNotFound,
 	#[snafu(display("Cyclic dependency detected!"))]
 	CyclicDependencyError,
 }
