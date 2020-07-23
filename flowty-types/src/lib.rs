@@ -70,9 +70,22 @@ pub struct TaskInstance {
 
 impl TaskInstance {
 	pub fn get_executor_definition(&self) -> Result<&openworkflow::ExecutorDefinition, FlowtyError> {
-		match self.execution_details.executor {
+		match &self.execution_details.executor {
 			Some(executor_definition) => Ok(&executor_definition),
-			_ => Err(FlowtyError::ExecutorDefinitionNotFound{task: self.task_id }),
+			_ => Err(FlowtyError::IncompleteTaskDefinition{
+				task: self.task_id.clone(),
+				message: "ExecutorDetails are missing".into()
+			}),
+		}
+	}
+
+	pub fn get_execution(&self) -> Result<&openworkflow::execution::Exec, FlowtyError> {
+		match &self.execution_details.exec {
+			Some(exec) => Ok(&exec),
+			_ => Err(FlowtyError::IncompleteTaskDefinition{
+				task: self.task_id.clone(),
+				message: "Execution is not defined".into()
+			}),
 		}
 	}
 }
@@ -273,9 +286,10 @@ pub enum FlowtyError {
 	},
 	#[snafu(display("Failed to parse DAG"))]
 	ParsingError,
-	#[snafu(display("No executor definition set for task '{}'", task))]
-	ExecutorDefinitionNotFound {
+	#[snafu(display("Task '{}' is not complete: {}", task, message))]
+	IncompleteTaskDefinition {
 		task: String,
+		message: String,
 	},
 	#[snafu(display("Failed to reach ExecutionBroker"))]
 	ExecutionBrokerUnreachable,

@@ -1,22 +1,20 @@
 use std::convert::TryFrom;
 
 use chrono::prelude::*;
-use chrono::Duration;
+
 use tokio::task;
-use tokio::task::JoinHandle;
+
 use tonic::Request;
 
 use flowty_types;
 use flowty_types::{Dag, FlowtyError};
+
 use flowty_types::openworkflow::execution_broker_client::ExecutionBrokerClient;
 use flowty_types::openworkflow::{
 	Task,
-	Execution,
 	SearchRequest,
 	ExecutorDefinition,
-	ExecutorKind,
-	LocalSpecification,
-	ExecutionStatus
+	ExecutorKind
 };
 
 use crate::utils;
@@ -123,11 +121,18 @@ impl WorkflowInstance {
 				for task in next_tasks {
 					let ti = self.dag.get_task_instance(task);
 					match ti.get_executor_definition() {
-						Ok(executor_definition) => {
-							let executor = find_executor().await;
-							let handle = task::spawn_blocking(|| {
-
-							});
+						Ok(ed) => {
+							let executor = find_executor(ed).await;
+							match executor {
+								Ok(executor_uri) => {
+									let handle = task::spawn_blocking(|| {
+										//execute_task(ti.)
+									});
+								},
+								Err(fe) => {
+									// todo: Fail task
+								}
+							};
 						},
 						Err(fe) => {
 							// todo: Fail Task
@@ -153,16 +158,16 @@ impl WorkflowInstance {
 async fn find_executor(definition: &ExecutorDefinition) -> Result<String, FlowtyError> {
 	let broker_uri = utils::get_env("EXECUTION_BROKER_URI", "http://[::1]:50051".into());
 	match ExecutionBrokerClient::connect(broker_uri).await {
-		Ok(client) => {
+		Ok(mut client) => {
 			match client.find_executor(Request::new(SearchRequest {
 				executor_definition: Some(ExecutorDefinition {
 					kind: ExecutorKind::Local.into(),
-					specs: Some(executor_definition::Specs::Local(LocalSpecification{packages: vec![]}))
+					specs: definition.specs.clone(),
 				})
 			})).await {
 				Ok(response) => Ok(response.into_inner().uri),
-				Err(e) => Err(FlowtyError::ExecutorNotFound)
-		}
+				Err(_) => Err(FlowtyError::ExecutorNotFound)
+			}
 		},
 		_ => Err(FlowtyError::ExecutionBrokerUnreachable)
 	}
