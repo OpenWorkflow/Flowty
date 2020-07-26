@@ -2,14 +2,14 @@ use std::convert::TryFrom;
 
 use chrono::prelude::*;
 
-use tokio::task;
-
+use tokio;
+use tokio::task::JoinHandle;
 use tonic::Request;
 
 use flowty_types;
 use flowty_types::{Dag, FlowtyError};
-
 use flowty_types::openworkflow::execution_broker_client::ExecutionBrokerClient;
+use flowty_types::openworkflow::executor_client::ExecutorClient;
 use flowty_types::openworkflow::{
 	Task,
 	SearchRequest,
@@ -18,6 +18,7 @@ use flowty_types::openworkflow::{
 };
 
 use crate::utils;
+
 /*
 	RunState is a state automaton:
 	Nothing => Queued
@@ -39,6 +40,7 @@ pub struct WorkflowInstance {
 	run_state: RunState,
 	run_date: DateTime<Utc>,
 	dag: Dag,
+	task_handles: Vec<JoinHandle<()>>,
 }
 
 impl WorkflowInstance {
@@ -60,6 +62,7 @@ impl WorkflowInstance {
 							run_state: RunState::Nothing,
 							run_date,
 							dag,
+							task_handles: Vec::new(),
 						})
 					},
 					Err(e) => {
@@ -125,16 +128,19 @@ impl WorkflowInstance {
 							let executor = find_executor(ed).await;
 							match executor {
 								Ok(executor_uri) => {
-									let handle = task::spawn_blocking(|| {
-										//execute_task(ti.)
+									let handle = tokio::spawn(async {
+										match ExecutorClient::connect(executor_uri).await {
+											Ok(mut executor) => (),
+											_ => (),
+										};
 									});
 								},
-								Err(fe) => {
+								Err(_fe) => {
 									// todo: Fail task
 								}
 							};
 						},
-						Err(fe) => {
+						Err(_fe) => {
 							// todo: Fail Task
 						}
 					};

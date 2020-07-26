@@ -23,7 +23,7 @@ fn calc_loop_pause(loop_start: Instant) -> u64 {
 	let loop_interval_sec: u64 = utils::get_env("LOOP_INTERVAL_SEC", "30".into())
 								.parse()
 								.unwrap_or_else(|_| 30);
-	let elapsed_sec : u64 = loop_start.elapsed().as_secs();
+	let elapsed_sec: u64 = loop_start.elapsed().as_secs();
 
 	trace!(
 		"Calculating loop pause.\nLOOP_INTERVAL_SEC: {}\nElapsed time in seconds: {}",
@@ -69,13 +69,13 @@ impl Scheduler {
 
 					info!("Parsing workflow with workflow_id '{}' from db", workflow_id);
 					if let Some(w) = openworkflow {
-						let w = flowty_types::openworkflow_from_binary(w);
-						match w {
+						match flowty_types::openworkflow_from_binary(w) {
 							Ok(w) => {
 								if self.workflow_bundle.contains_key(workflow_id) {
 									trace!("Old version of workflow already known. Replacing");
-									let workflow = self.workflow_bundle.get_mut(workflow_id).unwrap();
-									workflow.update_workflow(w, false);
+									if let Some(workflow) = self.workflow_bundle.get_mut(workflow_id) {
+										workflow.update_workflow(w, false);
+									}
 								} else {
 									trace!("Brand new workflow received");
 									self.workflow_bundle.insert(
@@ -89,7 +89,7 @@ impl Scheduler {
 							}
 						}
 					} else {
-						trace!("No binary data received for workflow_id '{}' from db", workflow_id);
+						warn!("No binary data received for workflow_id '{}' from db", workflow_id);
 					}
 				}
 			},
